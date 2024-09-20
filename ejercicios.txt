@@ -1,0 +1,109 @@
+CREATE DATABASE bdtriguer;
+
+--1
+--a
+CREATE OR REPLACE FUNCTION registrar_cambios_empleados()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Registra la acción dependiendo de si es inserción, actualización o eliminación
+    IF (TG_OP = 'INSERT') THEN
+        INSERT INTO auditoria_empleados(id_empleado, accion)
+        VALUES (NEW.id, 'INSERT');
+    ELSIF (TG_OP = 'UPDATE') THEN
+        INSERT INTO auditoria_empleados(id_empleado, accion)
+        VALUES (NEW.id, 'UPDATE');
+    ELSIF (TG_OP = 'DELETE') THEN
+        INSERT INTO auditoria_empleados(id_empleado, accion)
+        VALUES (OLD.id, 'DELETE');
+    END IF;
+    RETURN NULL; -- No afecta la operación principal
+END;
+$$ LANGUAGE plpgsql;
+
+--b
+CREATE TRIGGER trigger_auditoria_empleados
+AFTER INSERT OR UPDATE OR DELETE ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION registrar_cambios_empleados();
+
+--2
+--a
+CREATE OR REPLACE FUNCTION verificar_empleado_duplicado()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM empleados
+        WHERE nombre = NEW.nombre AND puesto = NEW.puesto
+    ) THEN
+        RAISE EXCEPTION 'Empleado con el mismo nombre y puesto ya existe.';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+--b
+CREATE TRIGGER trigger_verificar_duplicado
+BEFORE INSERT ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION verificar_empleado_duplicado();
+
+--3
+--a
+CREATE OR REPLACE FUNCTION ajustar_salario_minimo()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.salario < 1000 THEN
+        NEW.salario := 1000;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+--b
+CREATE TRIGGER trigger_ajustar_salario
+BEFORE INSERT ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION ajustar_salario_minimo();
+
+--4
+--a
+ALTER TABLE empleados
+ADD COLUMN ultima_modificacion TIMESTAMP;
+
+--b
+CREATE OR REPLACE FUNCTION actualizar_ultima_modificacion()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.ultima_modificacion := NOW(); -- Establece la fecha y hora actual
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+--c
+CREATE TRIGGER trigger_actualizar_modificacion
+BEFORE UPDATE ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION actualizar_ultima_modificacion();
+
+
+--5
+--a
+CREATE OR REPLACE FUNCTION incrementar_contador_empleados()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Aumenta el total de empleados en 1
+    UPDATE estadisticas_empresa
+    SET total_empleados = total_empleados + 1
+    WHERE id = 1;  -- Suponiendo que el ID de la empresa es 1
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+--b
+CREATE TRIGGER trigger_actualizar_contador
+AFTER INSERT ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION actualizar_contador_empleados();
+
+
